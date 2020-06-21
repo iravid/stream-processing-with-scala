@@ -5,6 +5,22 @@ lazy val root = (project in file("."))
     name := "stream-processing",
     organization := "com.iravid",
     scalaVersion := "2.13.2",
+    scalacOptions := Seq(
+      "-deprecation",
+      "-encoding",
+      "UTF-8",
+      "-feature",
+      "-unchecked",
+      "-Ywarn-unused:params,-implicits",
+      "-language:higherKinds",
+      "-language:existentials",
+      "-explaintypes",
+      "-Yrangepos",
+      "-Xlint:_,-missing-interpolator,-type-parameter-shadow",
+      "-Ywarn-numeric-widen",
+      "-Ywarn-value-discard",
+      "-Xfatal-warnings"
+    ),
     scalacOptions in Compile in console := Seq(
       "-Ypartial-unification",
       "-language:higherKinds",
@@ -23,14 +39,13 @@ lazy val root = (project in file("."))
       """.stripMargin,
     testFrameworks := Seq(new TestFramework("zio.test.sbt.ZTestFramework")),
     libraryDependencies ++= Seq(
-      "dev.zio" %% "zio"          % ZIO,
-      "dev.zio" %% "zio-streams"  % ZIO,
-      "dev.zio" %% "zio-test"     % ZIO % "test",
-      "dev.zio" %% "zio-test-sbt" % ZIO % "test",
-      "org.postgresql"         % "postgresql"      % "42.2.14",
-      "software.amazon.awssdk" % "s3"              % "2.13.39",
-      "org.apache.kafka"       % "kafka-clients"   % "2.5.0"
+      "dev.zio"                %% "zio"          % ZIO,
+      "dev.zio"                %% "zio-streams"  % ZIO,
+      "dev.zio"                %% "zio-test"     % ZIO % "test",
+      "dev.zio"                %% "zio-test-sbt" % ZIO % "test",
+      "org.postgresql"         % "postgresql"    % "42.2.14",
+      "software.amazon.awssdk" % "s3"            % "2.13.39",
+      "org.apache.kafka"       % "kafka-clients" % "2.5.0"
     ),
     scalafmtOnCompile := true
   )
-

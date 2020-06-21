@@ -6,7 +6,16 @@ import zio.stream._
 import java.nio.file.Path
 import java.io.IOException
 
-object StreamTypes {}
+object StreamTypes {
+  // 1. A stream that emits integers and cannot fail.
+
+  // 2. A stream that emits strings and can fail with throwables.
+
+  // 3. A stream that emits no elements.
+
+  // 4. A stream that requires access to the console, can fail with
+  // string errors and emits integers.
+}
 
 object ConstructingStreams {
   // One of the main design goals of ZStream is extremely good interoperability
