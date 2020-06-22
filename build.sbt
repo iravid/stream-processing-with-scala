@@ -21,14 +21,7 @@ lazy val root = (project in file("."))
       "-Ywarn-value-discard",
       "-Xfatal-warnings"
     ),
-    scalacOptions in Compile in console := Seq(
-      "-Ypartial-unification",
-      "-language:higherKinds",
-      "-language:existentials",
-      "-Yno-adapted-args",
-      "-Xsource:2.13",
-      "-Yrepl-class-based"
-    ),
+    scalacOptions in Compile in console := Seq(),
     initialCommands in Compile in console :=
       """|import zio._
          |import zio.console._
