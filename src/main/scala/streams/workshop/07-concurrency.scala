@@ -178,4 +178,50 @@ object StreamComposition {
 
         ZStream.unit
     } ?
+
+  // 4. Sum the numbers between the two streams, padding the right one with zeros.
+  val left  = ZStream.range(1, 8)
+  val right = ZStream.range(1, 5)
+
+  val zipped = ???
+
+  // 5. Regulate the output of this stream by zipping it with another stream that ticks on a fixed schedule.
+  val highVolume = ZStream.range(1, 100).forever ?
+
+  // 6. Truncate this stream by zipping it with a `Take` stream that is fed from a queue.
+  val toTruncate = ZStream.range(1, 100).forever ?
+
+  // 7. Perform a deterministic merge of these two streams in a 1-2-2-1 pattern.
+  val cats = ZStream("bengal", "shorthair", "chartreux").forever
+  val dogs = ZStream("labrador", "poodle", "boxer").forever
+
+  // 8. Write a stream that starts reading and emitting DDOG.csv every time the user
+  // prints enter.
+  val echoingFiles = ???
+
+  // 9. Run a variable number of background streams (according to the parameter) that
+  // perform monitoring. They should interrupt the foreground fiber doing the processing.
+  def doMonitor(id: Int) =
+    ZStream.repeatEffectWith(
+      random.nextIntBetween(1, 11).flatMap { i =>
+        if (i < 8) console.putStrLn(s"Monitor OK from ${id}")
+        else Task.fail(new RuntimeException(s"Monitor ${id} failed!"))
+      },
+      Schedule.fixed(2.seconds).jittered
+    )
+
+  val doProcessing =
+    ZStream.repeatEffectWith(
+      random.nextDoubleBetween(0.1, 0.5).map(f => s"Sample: ${f}"),
+      Schedule.fixed(1.second).jittered
+    )
+
+  def runProcessing(nMonitors: Int) = {
+    val _ = nMonitors
+    doProcessing ?
+  }
+
+  // 10. Write a stream that starts reading and emitting DDOG.csv every time the user
+  // prints enter, but only keeps the latest 5 files open.
+  val echoingFilesLatest = ???
 }
