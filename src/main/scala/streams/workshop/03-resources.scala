@@ -3,6 +3,10 @@ package streams.workshop
 import zio._
 import zio.stream._
 import java.nio.file.Path
+import java.nio.file.FileSystems
+import java.nio.file.StandardWatchEventKinds
+import scala.jdk.CollectionConverters._
+import java.nio.file.WatchEvent
 
 object Resources {
   // Resource management is an important part of stream processing. Resources can be
@@ -48,7 +52,31 @@ object FileIO {
   // 4. Read data from all files in a directory tree.
   def readAllFiles(path: String): ZStream[???, ???, Char] = ???
 
-  // 5. Monitor a directory for new files.
+  // 5. Monitor a directory for new files using Java's WatchService.
+  // Imperative example:
+  def monitor(path: Path): Unit = {
+    val watcher = FileSystems.getDefault().newWatchService()
+    path.register(watcher, StandardWatchEventKinds.ENTRY_CREATE)
+    var cont = true
+
+    while (cont) {
+      val key = watcher.take()
+
+      for (watchEvent <- key.pollEvents().asScala) {
+        watchEvent.kind match {
+          case StandardWatchEventKinds.ENTRY_CREATE =>
+            val pathEv = watchEvent.asInstanceOf[WatchEvent[Path]]
+            val filename = pathEv.context()
+
+            println(s"${filename} created")
+        }
+      }
+
+      cont = key.reset()
+    }
+  }
+
+
   def monitorFileCreation(path: String): ZStream[???, ???, Path] = ???
 
   // 6. Write a stream that synchronizes directories.
@@ -62,7 +90,11 @@ object SocketIO {
   // 2. Create an echo server with ZStream.fromSocketServer.
   val server = ZStream.fromSocketServer(???, ???)
 
-  // 3. Integrate GZIP decoding using GZIPInputStream, ZStream#toInputStream
+  // 3. Use `ZStream#toInputStream` and `java.io.InputStreamReader` to decode a
+  // stream of bytes from a file to a string.
+  val data = ZStream.fromFile(???) ?
+
+  // 4. Integrate GZIP decoding using GZIPInputStream, ZStream#toInputStream
   // and ZStream.fromInputStream.
   val gzipDecodingServer = ZStream.fromSocketServer(???, ???)
 }
