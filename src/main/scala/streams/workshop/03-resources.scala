@@ -11,6 +11,10 @@ import java.io.FileInputStream
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Paths
+import java.nio.file.StandardCopyOption
+import java.net.URL
+import java.io.InputStreamReader
+import java.util.zip.GZIPInputStream
 
 object Resources {
   // Resource management is an important part of stream processing. Resources can be
@@ -198,7 +202,7 @@ object FileIO {
     }
   }
 
-  def monitorFileCreation(path: String) =
+  def monitorFileCreation(path: String): ZStream[Any, Throwable, Path] =
     ZStream.managed(ZManaged.fromAutoCloseable(ZIO(FileSystems.getDefault().newWatchService()))).flatMap { watcher =>
       ZStream.fromEffect(ZIO(Paths.get(path).register(watcher, StandardWatchEventKinds.ENTRY_CREATE))).drain ++
         ZStream.repeatEffectChunkOption {
@@ -223,21 +227,72 @@ object FileIO {
     }
 
   // 6. Write a stream that synchronizes directories.
-  def synchronize(source: String, dest: String): ??? = ???
+  def synchronize(source: String, dest: String) =
+    monitorFileCreation(source).mapM { p =>
+      console.putStrLn(s"Copying ${p}") *>
+        ZIO(
+          Files.copy(
+            Path.of(source, p.toString),
+            Path.of(dest, p.getFileName.toString),
+            StandardCopyOption.REPLACE_EXISTING
+          )
+        ).refineToOrDie[IOException]
+    }
 }
 
 object SocketIO {
-  // 1. Print the first 2048 characters of the URL.
-  def readUrl(url: String): ZStream[???, ???, Char] = ???
+  def fromReaderEffect(reader: Task[java.io.Reader]): ZStream[blocking.Blocking, Throwable, Char] =
+    ZStream.bracket(reader)(reader => UIO(reader.close())).flatMap { reader =>
+      ZStream.repeatEffectChunkOption {
+        for {
+          buf       <- UIO(Array.ofDim[Char](2048))
+          charsRead <- blocking.effectBlocking(reader.read(buf)).mapError(Some(_))
+          result <- if (charsRead == -1) ZIO.fail(None)
+                   else UIO(Chunk.fromArray(buf.slice(0, charsRead)))
+        } yield result
+      }
+    }
 
-  // 2. Create an echo server with ZStream.fromSocketServer.
-  val server = ZStream.fromSocketServer(???, ???)
+  // 1. Print the first 2048 characters of the URL.
+  def readUrl(url: String) =
+    fromReaderEffect(ZIO(new java.io.InputStreamReader(new URL(url).openStream)))
+      .take(2048)
+      // chunking
+      // write this to a file
+      // read multiple urls at the same time
+      .tap(c => console.putStrLn(c.toString))
+
+  def businessLogic[R, E](stream: ZStream[R, E, Char]) =
+    stream.take(2048).tap(c => console.putStrLn(c.toString))
+
+  businessLogic(ZStream('a', 'b', 'c'))
+
+  // 2. Create a server that prints out data from incoming connections with ZStream.fromSocketServer.
+  val server = ZStream.fromSocketServer(8080).flatMap { connection =>
+    connection.read.tap(byte => console.putStrLn(byte.toChar.toString))
+  }
+
+  val st: ZStream[Any, Throwable, Byte] = ???
+  val is                                = st.toInputStream
 
   // 3. Use `ZStream#toInputStream` and `java.io.InputStreamReader` to decode a
-  // stream of bytes from a file to a string.
-  val data = ZStream.fromFile(???) ?
+  // stream of bytes from a file to a stream of chars.
+  val data =
+    ZStream
+      .managed(
+        ZStream
+          .fromFile(Paths.get("/Users/iravid/Development/ziverge/stream-processing-with-scala/build.sbt"))
+          .toInputStream
+      )
+      .flatMap(is => fromReaderEffect(Task(new InputStreamReader(is))))
+      .take(16)
+      .tap(c => console.putStrLn(c.toString))
 
   // 4. Integrate GZIP decoding using GZIPInputStream, ZStream#toInputStream
   // and ZStream.fromInputStream.
-  val gzipDecodingServer = ZStream.fromSocketServer(???, ???)
+  val gzipDecodingServer = ZStream.fromSocketServer(8080, Some("localhost")).flatMap { connection =>
+    ZStream.managed(connection.read.toInputStream).flatMap { inputStream =>
+      ZStream.fromInputStream(new GZIPInputStream(inputStream))
+    }
+  }
 }

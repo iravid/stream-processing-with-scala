@@ -50,6 +50,32 @@ object ExternalSources {
     }
   }
 
+  def readRowsStream(url: String, connProps: ju.Properties, sql: String) =
+    ZStream.bracket(Task(DriverManager.getConnection(url, connProps)))(conn => UIO(conn.close())).flatMap { conn =>
+      ZStream
+        .bracket(Task {
+          val st = conn.createStatement()
+          st.setFetchSize(5)
+          st.executeQuery(sql)
+        })(rs => UIO(rs.close()))
+        .flatMap { rs =>
+          ZStream.repeatEffectOption(for {
+            hasNext <- Task(rs.next()).mapError(Some(_))
+            row <- if (!hasNext) ZIO.fail(None)
+                  else Task(rs.getString(1)).mapError(Some(_))
+          } yield row)
+        }
+    }
+
+  val st = {
+    val props = new ju.Properties()
+    props.put("user", "root")
+    props.put("password", "root")
+    val url = "jdbc:postgresql://localhost/public"
+
+    readRowsStream(url, props, "SELECT * FROM streams")
+  }
+
   // 2. Convert this function, which polls a Kafka consumer, to use ZStream and
   // ZManaged.
   // Type: Unbounded, stateless iteration
@@ -95,7 +121,32 @@ object ExternalSources {
     listFilesToken(Chunk.empty, None)
   }
 
-  // 4. Convert this push-based mechanism into a stream. Hint: you'll need a queue.
+  def listFilesStream(bucket: String, prefix: String) =
+    ZStream
+      .bracket(Task {
+        S3Client
+          .builder()
+          .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create("minio", "minio123")))
+          .endpointOverride(URI.create("http://localhost:9000"))
+          .build()
+      })(client => UIO(client.close()))
+      .flatMap { client =>
+        ZStream.paginateM(None: Option[String]) { token =>
+          val reqBuilder = ListObjectsV2Request.builder().bucket(bucket).prefix(prefix)
+          token.foreach(reqBuilder.continuationToken)
+          val req = reqBuilder.build()
+
+          Task(client.listObjectsV2(req)).map { resp =>
+            val data = Chunk.fromIterable(resp.contents().asScala)
+
+            if (resp.isTruncated()) (data, Some(Some(resp.nextContinuationToken())))
+            else (data, None)
+          }
+        }
+      }
+      .flattenChunks
+
+  // 4. Convert this push-based mechanism into a stream.
   // Type: callback-based iteration
   case class Message(body: String)
 
@@ -139,7 +190,21 @@ object ExternalSources {
     }
   }
 
-  def messageStream(rabbit: RabbitMQ): ZStream[Any, Throwable, Message] = ???
+  def messageStream(rabbit: RabbitMQ): ZStream[Any, Throwable, Message] =
+    ZStream.effectAsync[Any, Throwable, Message] { cb =>
+      rabbit.register {
+        new Subscriber {
+          def onError(err: Throwable) = cb(ZIO.fail(Some(err)))
+          def onMessage(msg: Message) = cb(ZIO.succeed(Chunk.single(msg)))
+          def onShutdown(): Unit = cb(ZIO.fail(None))
+        }
+      }
+    }
+
+
+
+
+
 
   // 5. Convert this Reactive Streams-based publisher to a ZStream.
   val publisher = ???

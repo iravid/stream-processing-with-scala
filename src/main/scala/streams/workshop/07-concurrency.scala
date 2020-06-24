@@ -19,8 +19,8 @@ object ControlFlow {
       ZStream.fromEffect(console.putStrLn("Done printing!")).drain
 
   val output2 =
-    ZStream("Hello", "World").tap(console.putStrLn(_)).drain *>
-      ZStream.fromEffect(console.putStrLn("Done printing!")).drain
+    ZStream("Hello", "World").tap(console.putStrLn(_)) *>
+      ZStream.fromEffect(console.putStrLn("Done printing!"))
 
   // 3. Read 4 paths from the user. For every path input, read the file in its entirety
   // and print it out. Once done printing it out, log the file name in a `Ref` along with
@@ -38,7 +38,8 @@ object StreamErrorHandling {
     else Task.succeed(n)
   }
 
-  val queryResults: ZStream[random.Random, Throwable, Int] = ZStream.repeatEffect(query) ?
+  val queryResults: ZStream[random.Random with clock.Clock, Throwable, Int] =
+    ZStream.repeatEffect(query.retry(Schedule.fixed(50.millis)))
 
   // 2. Apply retries to the transformation applied during this stream.
   type Lookup = Has[Lookup.Service]
@@ -60,14 +61,19 @@ object StreamErrorHandling {
     ZStream.repeatEffect(query).mapM(i => Lookup.lookup(i).map((i, _))) ?
 
   // 3. Switch to another stream once the source fails in this stream.
-  val failover: ZStream[Any, ???, ???] =
-    ZStream(ZIO.succeed(1), ZIO.fail("Boom")).mapM(identity) ?
+  val failover: ZStream[Any, Nothing, Int] =
+    ZStream(ZIO.succeed(1), ZIO.fail("Boom")).mapM(identity)
+      .orElse(ZStream.succeed(2))
 
   // 4. Do the same, but when the source fails, print out the failure and switch
   // to the stream specified in the failure.
   case class UpstreamFailure[R, E, A](reason: String, backup: ZStream[R, E, A])
-  val failover2: ZStream[Any, ???, ???] =
-    ZStream(ZIO.succeed(1), ZIO.fail(UpstreamFailure("Malfunction", ZStream(2)))) ?
+  val failover2: ZStream[console.Console, UpstreamFailure[Any, Nothing, Int], Int] =
+    ZStream(ZIO.succeed(1), ZIO.fail(UpstreamFailure("Malfunction", ZStream(2))))
+      .mapM(identity)
+      .catchAll { case UpstreamFailure(reason, backup) =>
+        ZStream.fromEffect(console.putStrLn(reason)).drain ++ backup
+      }
 
   // 5. Implement a simple retry combinator that waits for the specified duration
   // between attempts.
@@ -77,7 +83,7 @@ object StreamErrorHandling {
   val alwaysFailing = retryStream(ZStream.fail("Boom"), 1.millis)
 
   // 7. Surface typed errors as value-level errors in this stream using `either`:
-  val eithers = ZStream(ZIO.succeed(1), ZIO.fail("Boom")) ?
+  val eithers = ZStream(ZIO.succeed(1), ZIO.fail("Boom"), ZIO.succeed(3)).mapM(identity).either
 
   // 8. Use catchAll to restart this stream, without re-acquiring the resource.
   val subsection = ZStream
