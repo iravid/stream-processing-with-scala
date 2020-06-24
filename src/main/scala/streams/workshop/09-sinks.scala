@@ -1,5 +1,3 @@
 package streams.workshop
 
-object Sinks {
-
-}
+object Sinks {}

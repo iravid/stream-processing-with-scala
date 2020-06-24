@@ -15,11 +15,14 @@ import org.apache.kafka.common.serialization.StringDeserializer
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Request
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model.S3Object
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials
+import java.net.URI
 
 object ExternalSources {
   // 1. Refactor this function, which drains a java.sql.ResultSet,
   // to use ZStream and ZManaged.
-  // Type: Bounded, stateless iteration
+  // Type: Unbounded, stateless iteration
   def readRows(url: String, connProps: ju.Properties, sql: String): Chunk[String] = {
     var conn: Connection = null
     try {
@@ -28,7 +31,7 @@ object ExternalSources {
       var resultSet: ResultSet = null
       try {
         val st = conn.createStatement()
-        st.setFetchSize(200)
+        st.setFetchSize(5)
         resultSet = st.executeQuery(sql)
 
         val buf = mutable.ArrayBuilder.make[String]
@@ -50,7 +53,11 @@ object ExternalSources {
   // 2. Convert this function, which polls a Kafka consumer, to use ZStream and
   // ZManaged.
   // Type: Unbounded, stateless iteration
-  def pollConsumer(props: ju.Properties, topic: String)(f: ConsumerRecord[String, String] => Unit): Unit = {
+  def pollConsumer(topic: String)(f: ConsumerRecord[String, String] => Unit): Unit = {
+    val props = new ju.Properties
+    props.put("bootstrap.server", "localhost:9092")
+    props.put("group.id", "streams")
+    props.put("auto.offset.reset", "earliest")
     var consumer: KafkaConsumer[String, String] = null
 
     try {
@@ -68,7 +75,11 @@ object ExternalSources {
   // ZManaged. Bonus points for using S3AsyncClient instead.
   // Type: Unbounded, stateful iteration
   def listFiles(bucket: String, prefix: String): Chunk[S3Object] = {
-    val client = S3Client.create()
+    val client = S3Client
+      .builder()
+      .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create("minio", "minio123")))
+      .endpointOverride(URI.create("http://localhost:9000"))
+      .build()
 
     def listFilesToken(acc: Chunk[S3Object], token: Option[String]): Chunk[S3Object] = {
       val reqBuilder = ListObjectsV2Request.builder().bucket(bucket).prefix(prefix)

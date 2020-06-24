@@ -65,7 +65,7 @@ object FileIO {
       for (watchEvent <- key.pollEvents().asScala) {
         watchEvent.kind match {
           case StandardWatchEventKinds.ENTRY_CREATE =>
-            val pathEv = watchEvent.asInstanceOf[WatchEvent[Path]]
+            val pathEv   = watchEvent.asInstanceOf[WatchEvent[Path]]
             val filename = pathEv.context()
 
             println(s"${filename} created")
@@ -75,7 +75,6 @@ object FileIO {
       cont = key.reset()
     }
   }
-
 
   def monitorFileCreation(path: String): ZStream[???, ???, Path] = ???
 
